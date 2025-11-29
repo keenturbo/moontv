@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import db from '@/lib/db.client';
+import { db } from '@/lib/db';
 
 // Upstash 保活函数
 async function keepAliveUpstash() {

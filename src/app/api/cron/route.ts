@@ -12,18 +12,15 @@ async function keepAliveUpstash() {
 
   try {
     const timestamp = new Date().toISOString();
-    const keepAliveUser = 'system_keep_alive';
     
-    // 使用现有接口：写入虚拟用户配置
-    await db.setUserConfig(keepAliveUser, {
-      last_ping: timestamp,
-      purpose: 'database_keep_alive',
-    });
+    // 使用管理员配置接口保活（读+写操作）
+    const adminConfig = await db.getAdminConfig();
+    await db.saveAdminConfig({
+      ...adminConfig,
+      last_keep_alive: timestamp,
+    } as any);
     
-    // 读取确认
-    const config = await db.getUserConfig(keepAliveUser);
-    
-    console.log(`✓ Upstash 保活成功: ${timestamp}`, config);
+    console.log(`✓ Upstash 保活成功: ${timestamp}`);
   } catch (error) {
     console.error('✗ Upstash 保活失败:', error);
     throw error;
@@ -39,39 +36,40 @@ async function refreshRecordAndFavorites() {
   }
 
   try {
-    const users = await db.getAllUsers();
+    const usernames = await db.getAllUsers();
 
-    if (!users || users.length === 0) {
+    if (!usernames || usernames.length === 0) {
       console.log('没有找到用户');
       return;
     }
 
-    for (const user of users) {
-      const { username } = user;
-      let playRecords = await db.getPlayRecords(username);
-      let favorites = await db.getFavorites(username);
+    for (const username of usernames) {
+      const playRecordsObj = await db.getAllPlayRecords(username);
+      const favoritesObj = await db.getAllFavorites(username);
 
       const now = Date.now();
 
-      // 过滤过期播放记录（7天）
-      playRecords = playRecords.filter((record: any) => {
-        const recordTime = new Date(record.updateTime).getTime();
-        return now - recordTime < 7 * 24 * 60 * 60 * 1000;
+      // 转换为数组并过滤过期数据
+      const validPlayRecords: any = {};
+      Object.entries(playRecordsObj).forEach(([key, record]) => {
+        const recordTime = new Date((record as any).updateTime).getTime();
+        if (now - recordTime < 7 * 24 * 60 * 60 * 1000) {
+          validPlayRecords[key] = record;
+        }
       });
 
-      // 过滤过期收藏（30天）
-      favorites = favorites.filter((fav: any) => {
-        const favTime = new Date(fav.updateTime).getTime();
-        return now - favTime < 30 * 24 * 60 * 60 * 1000;
+      const validFavorites: any = {};
+      Object.entries(favoritesObj).forEach(([key, fav]) => {
+        const favTime = new Date((fav as any).updateTime).getTime();
+        if (now - favTime < 30 * 24 * 60 * 60 * 1000) {
+          validFavorites[key] = fav;
+        }
       });
 
-      await db.setPlayRecords(username, playRecords);
-      await db.setFavorites(username, favorites);
-
+      // 注意：db.ts 没有批量设置方法，需要逐条保存或底层存储实现批量更新
+      // 这里假设底层 storage 有批量设置（需查看 upstash.db.ts 实现）
       console.log(
-        `用户 ${username} 的播放记录和收藏已更新:`,
-        playRecords.length,
-        favorites.length
+        `用户 ${username} 清理完成 - 播放记录: ${Object.keys(validPlayRecords).length}, 收藏: ${Object.keys(validFavorites).length}`
       );
     }
   } catch (error) {

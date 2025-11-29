@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDB } from '@/lib/db.client';
-
-const db = getDB();
+import db from '@/lib/db.client';
 
 // Upstash 保活函数
 async function keepAliveUpstash() {
@@ -82,7 +80,7 @@ async function refreshRecordAndFavorites() {
   }
 }
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   console.log('Cron job triggered:', new Date().toISOString());
 
   try {
